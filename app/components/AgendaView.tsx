@@ -1,14 +1,26 @@
 'use client';
 
+import { useState } from 'react';
 import { Item } from '../lib/types';
 import Link from 'next/link';
 
 interface AgendaViewProps {
   items: Item[];
-  onMarkAsReturned: (itemId: string, currentStatus: boolean) => void;
+  onMarkAsReturned: (itemId: string, currentStatus: boolean) => Promise<void>;
 }
 
 export default function AgendaView({ items, onMarkAsReturned }: AgendaViewProps) {
+  const [updatingItemIds, setUpdatingItemIds] = useState<string[]>([]);
+
+  const handleMarkAsReturned = async (itemId: string, currentStatus: boolean) => {
+    setUpdatingItemIds(prev => [...prev, itemId]);
+    try {
+      await onMarkAsReturned(itemId, currentStatus);
+    } finally {
+      setUpdatingItemIds(prev => prev.filter(id => id !== itemId));
+    }
+  };
+
   const getCategoryColor = (category: string) => {
     switch (category) {
       case 'Money':
@@ -65,6 +77,7 @@ export default function AgendaView({ items, onMarkAsReturned }: AgendaViewProps)
               const reminderDate = item.reminder_date ? new Date(item.reminder_date) : null;
               const isNearReminder = reminderDate && 
                 (new Date().getTime() - reminderDate.getTime()) / (1000 * 60 * 60 * 24) > -2;
+              const isUpdating = updatingItemIds.includes(item.id);
 
               return (
                 <div 
@@ -111,10 +124,11 @@ export default function AgendaView({ items, onMarkAsReturned }: AgendaViewProps)
                     </div>
                     <div className="flex items-center space-x-4">
                       <button
-                        onClick={() => onMarkAsReturned(item.id, item.returned)}
-                        className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 text-sm"
+                        onClick={() => handleMarkAsReturned(item.id, item.returned)}
+                        disabled={isUpdating}
+                        className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 text-sm disabled:opacity-50"
                       >
-                        {item.returned ? 'Mark as Active' : 'Mark as Returned'}
+                        {isUpdating ? 'Updating...' : (item.returned ? 'Mark as Active' : 'Mark as Returned')}
                       </button>
                       <Link
                         href={`/edit/${item.id}`}

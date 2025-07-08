@@ -2,35 +2,31 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '../../lib/supabase';
 import { Item, ItemCategory } from '../../lib/types';
+import { getItem, updateItem, deleteItem } from '../../lib/storage';
+import { useAuth } from '../../components/AuthProvider';
 
 export default function EditItemPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const [item, setItem] = useState<Item | null>(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { user } = useAuth();
 
   useEffect(() => {
     fetchItem();
   }, []);
 
   const fetchItem = async () => {
-    const { data: user } = await supabase.auth.getUser();
-    if (!user.user) {
+    if (!user) {
       router.push('/');
       return;
     }
 
-    const { data, error } = await supabase
-      .from('items')
-      .select('*')
-      .eq('id', params.id)
-      .eq('user_id', user.user.id)
-      .single();
-
-    if (error || !data) {
-      console.error('Error fetching item:', error);
+    const data = await getItem(params.id);
+    if (!data) {
       router.push('/');
       return;
     }
@@ -43,9 +39,11 @@ export default function EditItemPage({ params }: { params: { id: string } }) {
     e.preventDefault();
     if (!item) return;
 
-    const { error } = await supabase
-      .from('items')
-      .update({
+    setSaving(true);
+    setError(null);
+
+    try {
+      const result = await updateItem(item.id, {
         item_name: item.item_name,
         person: item.person,
         date: item.date,
@@ -53,15 +51,18 @@ export default function EditItemPage({ params }: { params: { id: string } }) {
         reminder_date: item.reminder_date,
         notes: item.notes,
         category: item.category
-      })
-      .eq('id', item.id);
+      });
 
-    if (error) {
-      console.error('Error updating item:', error);
-      return;
+      if (result.success) {
+        router.push('/');
+      } else {
+        setError(result.error || 'Failed to update item');
+      }
+    } catch (err) {
+      setError('An error occurred while updating the item');
+    } finally {
+      setSaving(false);
     }
-
-    router.push('/');
   };
 
   const handleDelete = async () => {
@@ -70,18 +71,20 @@ export default function EditItemPage({ params }: { params: { id: string } }) {
     }
 
     setIsDeleting(true);
-    const { error } = await supabase
-      .from('items')
-      .delete()
-      .eq('id', item.id);
+    setError(null);
 
-    if (error) {
-      console.error('Error deleting item:', error);
+    try {
+      const result = await deleteItem(item.id);
+      if (result.success) {
+        router.push('/');
+      } else {
+        setError(result.error || 'Failed to delete item');
+        setIsDeleting(false);
+      }
+    } catch (err) {
+      setError('An error occurred while deleting the item');
       setIsDeleting(false);
-      return;
     }
-
-    router.push('/');
   };
 
   if (loading) {
@@ -96,67 +99,72 @@ export default function EditItemPage({ params }: { params: { id: string } }) {
     return null;
   }
 
+  // Only show delete button if user is the lender and agreement is pending
+  const canDelete = user?.id === item.lender_id && item.agreement_status === 'pending';
+
   return (
     <main className="container mx-auto px-4 py-8 max-w-lg">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-2xl font-bold">Edit Item</h1>
-        <button
-          onClick={handleDelete}
-          disabled={isDeleting}
-          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
-        >
-          {isDeleting ? 'Deleting...' : 'Delete Item'}
-        </button>
+        {canDelete && (
+          <button
+            onClick={handleDelete}
+            disabled={isDeleting}
+            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {isDeleting ? 'Deleting...' : 'Delete Item'}
+          </button>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
+          <label className="block text-sm font-medium mb-2">
             Item Name
           </label>
           <input
             type="text"
             value={item.item_name}
             onChange={(e) => setItem({ ...item, item_name: e.target.value })}
-            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-gray-100"
             required
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
+          <label className="block text-sm font-medium mb-2">
             Person
           </label>
           <input
             type="text"
             value={item.person}
             onChange={(e) => setItem({ ...item, person: e.target.value })}
-            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-gray-100"
             required
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
+          <label className="block text-sm font-medium mb-2">
             Date
           </label>
           <input
             type="date"
             value={item.date}
             onChange={(e) => setItem({ ...item, date: e.target.value })}
-            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-gray-100"
             required
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
+          <label className="block text-sm font-medium mb-2">
             Type
           </label>
           <select
             value={item.type}
             onChange={(e) => setItem({ ...item, type: e.target.value as 'borrowed' | 'lent' })}
-            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-gray-100"
             required
           >
             <option value="borrowed">Borrowed</option>
@@ -165,13 +173,13 @@ export default function EditItemPage({ params }: { params: { id: string } }) {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
+          <label className="block text-sm font-medium mb-2">
             Category
           </label>
           <select
             value={item.category}
             onChange={(e) => setItem({ ...item, category: e.target.value as ItemCategory })}
-            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-gray-100"
             required
           >
             <option value="Money">Money</option>
@@ -184,34 +192,41 @@ export default function EditItemPage({ params }: { params: { id: string } }) {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
+          <label className="block text-sm font-medium mb-2">
             Reminder Date (Optional)
           </label>
           <input
             type="date"
             value={item.reminder_date || ''}
             onChange={(e) => setItem({ ...item, reminder_date: e.target.value })}
-            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-gray-100"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-2">
+          <label className="block text-sm font-medium mb-2">
             Notes (Optional)
           </label>
           <textarea
             value={item.notes || ''}
             onChange={(e) => setItem({ ...item, notes: e.target.value })}
-            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px]"
+            className="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-gray-100 min-h-[100px]"
           />
         </div>
+
+        {error && (
+          <div className="text-red-600 dark:text-red-400 text-sm">
+            {error}
+          </div>
+        )}
 
         <div className="flex gap-4">
           <button
             type="submit"
-            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
+            disabled={saving}
+            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
           >
-            Save Changes
+            {saving ? 'Saving...' : 'Save Changes'}
           </button>
           <button
             type="button"

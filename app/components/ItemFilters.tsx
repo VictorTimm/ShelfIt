@@ -4,56 +4,38 @@ import { useState } from 'react';
 import { ItemCategory } from '../lib/types';
 
 interface ItemFiltersProps {
-  selectedType: string;
-  selectedStatus: string;
-  selectedCategory: string;
-  onTypeChange: (type: string) => void;
-  onStatusChange: (status: string) => void;
-  onCategoryChange: (category: string) => void;
+  selectedType: 'all' | 'borrowed' | 'lent';
+  onTypeChange: (type: 'all' | 'borrowed' | 'lent') => void;
+  returnedFilter: 'all' | 'active' | 'returned';
+  onReturnedFilterChange: (filter: 'all' | 'active' | 'returned') => void;
 }
 
 export default function ItemFilters({
   selectedType,
-  selectedStatus,
-  selectedCategory,
   onTypeChange,
-  onStatusChange,
-  onCategoryChange,
+  returnedFilter,
+  onReturnedFilterChange,
 }: ItemFiltersProps) {
   return (
-    <div className="flex flex-wrap gap-4">
+    <div className="flex gap-4">
       <select
         value={selectedType}
-        onChange={(e) => onTypeChange(e.target.value)}
-        className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+        onChange={(e) => onTypeChange(e.target.value as 'all' | 'borrowed' | 'lent')}
+        className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
       >
-        <option value="All">All Types</option>
-        <option value="Borrowed">Borrowed</option>
-        <option value="Lent">Lent</option>
+        <option value="all">All Items</option>
+        <option value="borrowed">Borrowed</option>
+        <option value="lent">Lent</option>
       </select>
 
       <select
-        value={selectedStatus}
-        onChange={(e) => onStatusChange(e.target.value)}
-        className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+        value={returnedFilter}
+        onChange={(e) => onReturnedFilterChange(e.target.value as 'all' | 'active' | 'returned')}
+        className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
       >
-        <option value="All">All Status</option>
-        <option value="Active">Active</option>
-        <option value="Returned">Returned</option>
-      </select>
-
-      <select
-        value={selectedCategory}
-        onChange={(e) => onCategoryChange(e.target.value)}
-        className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
-      >
-        <option value="All">All Categories</option>
-        <option value="Money">Money</option>
-        <option value="Book">Book</option>
-        <option value="Clothing">Clothing</option>
-        <option value="Device">Device</option>
-        <option value="Tool">Tool</option>
-        <option value="Other">Other</option>
+        <option value="all">All Status</option>
+        <option value="active">Active</option>
+        <option value="returned">Returned</option>
       </select>
     </div>
   );

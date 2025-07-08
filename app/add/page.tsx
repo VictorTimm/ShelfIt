@@ -11,6 +11,7 @@ export default function AddItemPage() {
   const { user, loading: authLoading } = useAuth();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [type, setType] = useState<'borrowed' | 'lent'>('borrowed');
 
   console.log('AddItemPage state:', { user, authLoading, saving, error });
 
@@ -36,6 +37,8 @@ export default function AddItemPage() {
         returned: false,
         notes: formData.get('notes') as string || undefined,
         reminder_date: formData.get('reminderDate') as string || undefined,
+        agreement_status: 'pending',
+        borrower_email: type === 'lent' ? formData.get('borrowerEmail') as string : user.email!
       };
 
       console.log('Adding item:', newItem);
@@ -81,6 +84,23 @@ export default function AddItemPage() {
         </div>
 
         <div>
+          <label htmlFor="type" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Type
+          </label>
+          <select
+            id="type"
+            name="type"
+            required
+            value={type}
+            onChange={(e) => setType(e.target.value as 'borrowed' | 'lent')}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+          >
+            <option value="borrowed">Borrowed</option>
+            <option value="lent">Lent</option>
+          </select>
+        </div>
+
+        <div>
           <label htmlFor="person" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
             Person
           </label>
@@ -92,6 +112,24 @@ export default function AddItemPage() {
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
           />
         </div>
+
+        {type === 'lent' && (
+          <div>
+            <label htmlFor="borrowerEmail" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Borrower's Email
+            </label>
+            <input
+              type="email"
+              id="borrowerEmail"
+              name="borrowerEmail"
+              required
+              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+            />
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              The borrower will receive a notification to confirm this item.
+            </p>
+          </div>
+        )}
 
         <div>
           <label htmlFor="date" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -105,22 +143,6 @@ export default function AddItemPage() {
             defaultValue={new Date().toISOString().split('T')[0]}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
           />
-        </div>
-
-        <div>
-          <label htmlFor="type" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            Type
-          </label>
-          <select
-            id="type"
-            name="type"
-            required
-            defaultValue="borrowed"
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-          >
-            <option value="borrowed">Borrowed</option>
-            <option value="lent">Lent</option>
-          </select>
         </div>
 
         <div>
@@ -173,7 +195,7 @@ export default function AddItemPage() {
             disabled={saving || !user}
             className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
           >
-            {saving ? 'Adding...' : 'Add Item'}
+            {saving ? 'Adding...' : type === 'lent' ? 'Send Agreement' : 'Request Agreement'}
           </button>
           <button
             type="button"

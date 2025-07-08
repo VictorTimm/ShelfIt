@@ -1,124 +1,140 @@
 'use client';
 
-import React, { useState } from 'react';
-import { format, isAfter, isBefore, addDays } from 'date-fns';
+import { useState } from 'react';
 import Link from 'next/link';
 import { Item } from '../lib/types';
-import { useRouter } from 'next/navigation';
-import { updateItem } from '../lib/storage';
+import { updateItem, deleteItem } from '../lib/storage';
+import { useAuth } from '../components/AuthProvider';
 
 interface ItemCardProps {
   item: Item;
-  onMarkAsReturned: (itemId: string, currentStatus: boolean) => void;
+  onUpdate: () => void;
 }
 
-export default function ItemCard({ item, onMarkAsReturned }: ItemCardProps) {
-  const router = useRouter();
+export default function ItemCard({ item, onUpdate }: ItemCardProps) {
   const [updating, setUpdating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { user } = useAuth();
 
-  const handleToggleReturned = async () => {
+  const handleMarkAsReturned = async () => {
+    setUpdating(true);
+    setError(null);
+
     try {
-      setUpdating(true);
-      setError(null);
       const result = await updateItem(item.id, { returned: !item.returned });
       if (result.success) {
-        onMarkAsReturned(item.id, item.returned);
+        onUpdate();
       } else {
         setError(result.error || 'Failed to update item');
       }
     } catch (err) {
-      console.error('Error updating item:', err);
-      setError('Failed to update item');
+      setError('An error occurred while updating the item');
     } finally {
       setUpdating(false);
     }
   };
 
-  const isReminderSoon = () => {
-    if (!item.reminder_date) return false;
-    const reminderDate = new Date(item.reminder_date);
-    const today = new Date();
-    const diffTime = reminderDate.getTime() - today.getTime();
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    return diffDays >= 0 && diffDays <= 2;
-  };
+  const handleDelete = async () => {
+    if (!window.confirm('Are you sure you want to delete this item? This action cannot be undone.')) {
+      return;
+    }
 
-  const showReminder = item.reminder_date && !item.returned &&
-    new Date(item.reminder_date) <= new Date(Date.now() + 2 * 24 * 60 * 60 * 1000);
+    setDeleting(true);
+    setError(null);
+    console.log('Starting delete for item:', item.id);
 
-  const getCategoryColor = (category: string) => {
-    switch (category) {
-      case 'Money':
-        return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300';
-      case 'Book':
-        return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300';
-      case 'Clothing':
-        return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300';
-      case 'Device':
-        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300';
-      case 'Tool':
-        return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-300';
-      default:
-        return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
+    try {
+      const result = await deleteItem(item.id);
+      console.log('Delete result:', result);
+      
+      if (result.success) {
+        console.log('Delete successful, calling onUpdate');
+        // Force immediate UI update by hiding this item
+        const itemElement = document.getElementById(`item-${item.id}`);
+        if (itemElement) {
+          itemElement.style.display = 'none';
+        }
+        // Then refresh the data
+        setTimeout(() => {
+          onUpdate();
+        }, 100);
+      } else {
+        console.error('Delete failed:', result.error);
+        setError(result.error || 'Failed to delete item');
+        setDeleting(false);
+      }
+    } catch (err) {
+      console.error('Error in delete operation:', err);
+      setError('An error occurred while deleting the item');
+      setDeleting(false);
     }
   };
 
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-4 relative">
-      {showReminder && (
-        <div className="absolute top-0 left-0 right-0 bg-yellow-100 dark:bg-yellow-900 text-yellow-800 dark:text-yellow-100 px-4 py-2 rounded-t-lg">
-          Due in less than 2 days!
-        </div>
-      )}
+    <div id={`item-${item.id}`} className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
       <div className="flex justify-between items-start">
         <div>
-          <h3 className="text-xl font-semibold mb-2">{item.item_name}</h3>
-          <p className="text-gray-600 dark:text-gray-300">{item.person}</p>
+          <h3 className="text-lg font-medium">{item.item_name}</h3>
+          <p className="text-gray-600 dark:text-gray-400">
+            {item.type === 'borrowed' ? 'Borrowed from' : 'Lent to'} {item.person}
+          </p>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            {format(new Date(item.date), 'MMMM d, yyyy')}
+            {new Date(item.date).toLocaleDateString()}
           </p>
           {item.reminder_date && (
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Reminder: {format(new Date(item.reminder_date), 'MMMM d, yyyy')}
+            <p className="text-sm text-yellow-600 dark:text-yellow-400">
+              Reminder: {new Date(item.reminder_date).toLocaleDateString()}
             </p>
           )}
-          {item.notes && (
-            <p className="text-gray-600 dark:text-gray-300 mt-2">{item.notes}</p>
-          )}
         </div>
-        <div className="flex flex-col gap-2">
-          <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoryColor(item.category)}`}>
-            {item.category}
-          </span>
-          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+        <div className="flex flex-col items-end">
+          <span className={`text-sm px-2 py-1 rounded ${
             item.returned
-              ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
-              : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300'
+              ? 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100'
+              : 'bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100'
           }`}>
             {item.returned ? 'Returned' : 'Active'}
           </span>
-          <Link
-            href={`/edit/${item.id}`}
-            className="px-4 py-2 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-md hover:opacity-80 transition-opacity text-center"
-          >
-            Edit
-          </Link>
-          <button
-            onClick={handleToggleReturned}
-            disabled={updating}
-            className={`px-4 py-2 rounded-md ${
-              updating
-                ? 'bg-gray-300 text-gray-700 cursor-not-allowed'
-                : 'bg-blue-600 text-white hover:bg-blue-700'
-            }`}
-          >
-            {updating ? 'Updating...' : item.returned ? 'Mark as Active' : 'Mark as Returned'}
-          </button>
+          <span className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            {item.category}
+          </span>
         </div>
       </div>
+
+      {item.notes && (
+        <p className="mt-4 text-sm text-gray-600 dark:text-gray-400">
+          {item.notes}
+        </p>
+      )}
+
+      <div className="mt-4 flex justify-end space-x-2">
+        <Link
+          href={`/edit/${item.id}`}
+          className="text-sm bg-blue-100 text-blue-800 px-3 py-1 rounded hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-blue-900 dark:text-blue-100 dark:hover:bg-blue-800"
+        >
+          Edit
+        </Link>
+
+        <button
+          onClick={handleDelete}
+          disabled={deleting}
+          className="text-sm bg-red-100 text-red-800 px-3 py-1 rounded hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 dark:bg-red-900 dark:text-red-100 dark:hover:bg-red-800"
+        >
+          {deleting ? 'Deleting...' : 'Delete'}
+        </button>
+        
+        <button
+          onClick={handleMarkAsReturned}
+          disabled={updating}
+          className="text-sm bg-gray-100 text-gray-800 px-3 py-1 rounded hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 disabled:opacity-50 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+        >
+          {updating ? 'Updating...' : item.returned ? 'Mark as Active' : 'Mark as Returned'}
+        </button>
+      </div>
+
       {error && (
-        <div className="mt-4 text-red-500 text-sm">{error}</div>
+        <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>
       )}
     </div>
   );

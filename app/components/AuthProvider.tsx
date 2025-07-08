@@ -2,11 +2,13 @@
 
 import { createContext, useContext, useEffect, useState } from 'react';
 import { User } from '@supabase/supabase-js';
+import { useRouter, usePathname } from 'next/navigation';
 import { supabase } from '../lib/supabase';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  signOut: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -14,19 +16,42 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
-    // Check for existing session
+    console.log('AuthProvider mounted effect running');
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) {
+      console.log('Skipping auth check - not mounted yet');
+      return;
+    }
+
+    console.log('Starting auth check, pathname:', pathname);
+
     const checkSession = async () => {
       try {
-        console.log('Checking session...');
+        console.log('Checking Supabase session...');
         const { data: { session }, error } = await supabase.auth.getSession();
+        
         if (error) {
           console.error('Error getting session:', error);
           return;
         }
-        console.log('Session:', session);
+
+        console.log('Session result:', session ? 'Session exists' : 'No session');
         setUser(session?.user ?? null);
+        
+        if (!session?.user && pathname !== '/login') {
+          console.log('No session, redirecting to /login');
+          router.push('/login');
+        } else if (session?.user) {
+          console.log('Session exists, user:', session.user.email);
+        }
       } catch (err) {
         console.error('Error in checkSession:', err);
       } finally {
@@ -36,43 +61,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     checkSession();
 
-    // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      console.log('Auth state changed:', _event, session);
+      console.log('Auth state changed:', _event, session ? 'Session exists' : 'No session');
       setUser(session?.user ?? null);
+      
+      if (mounted) {
+        if (!session?.user && pathname !== '/login') {
+          console.log('Auth changed: No session, redirecting to /login');
+          router.push('/login');
+        } else if (session?.user && pathname === '/login') {
+          console.log('Auth changed: Session exists, redirecting to home');
+          router.push('/');
+        }
+      }
+      
       setLoading(false);
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [mounted, pathname, router]);
 
-  // If no user is logged in, create an anonymous session
-  useEffect(() => {
-    const signInAnonymously = async () => {
-      if (!loading && !user) {
-        try {
-          console.log('Signing in anonymously...');
-          const { data, error } = await supabase.auth.signInAnonymously();
-          if (error) {
-            console.error('Error signing in anonymously:', error);
-            return;
-          }
-          console.log('Anonymous sign in successful:', data);
-        } catch (err) {
-          console.error('Error in signInAnonymously:', err);
-        }
-      }
-    };
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    router.push('/login');
+  };
 
-    signInAnonymously();
-  }, [user, loading]);
-
-  console.log('AuthProvider state:', { user, loading });
+  // Don't render children until mounted to avoid hydration mismatch
+  if (!mounted) {
+    return null;
+  }
 
   return (
-    <AuthContext.Provider value={{ user, loading }}>
+    <AuthContext.Provider value={{ user, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   );
